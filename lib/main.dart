@@ -609,7 +609,6 @@ class ProfileScreen extends StatelessWidget {
                 )
                 : const Icon(Icons.person, size: 80),
             const SizedBox(height: 10),
-            Text(user?.displayName ?? "No Name"),
             Text(
               "Email: ${user?.email ?? 'No email found'}",
               style: TextStyle(fontSize: 18),
@@ -821,7 +820,6 @@ class AdminProfileScreen extends StatelessWidget {
                 )
                 : const Icon(Icons.person, size: 80),
             const SizedBox(height: 10),
-            Text(user?.displayName ?? "No Name"),
             Text(
               "Email: ${user?.email ?? 'No email found'}",
               style: TextStyle(fontSize: 18),
