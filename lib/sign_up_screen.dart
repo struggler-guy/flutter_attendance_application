@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 // Note: This may introduce a circular dependency in a larger project.
 // For small projects it’s acceptable, but consider moving HomePage to its own file later.
 import 'package:flutter_attendance_pplication/main.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({Key? key}) : super(key: key);
@@ -22,6 +23,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   String _errorMessage = "";
   bool _isLoading = false;
+  String _selectedRole = "student"; // Default role
 
   Future<void> _signUp() async {
     // Validate the form first.
@@ -40,10 +42,20 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
       try {
         // Create a new user with email & password.
-        await FirebaseAuth.instance.createUserWithEmailAndPassword(
-          email: _emailController.text.trim(),
-          password: _passwordController.text,
-        );
+        UserCredential userCredential = await FirebaseAuth.instance
+            .createUserWithEmailAndPassword(
+              email: _emailController.text.trim(),
+              password: _passwordController.text,
+            );
+
+        String uid = userCredential.user!.uid;
+        String email = _emailController.text.trim();
+
+        // Store user details in Firestore
+        await FirebaseFirestore.instance.collection('users').doc(uid).set({
+          'email': email,
+          'role': _selectedRole,
+        });
 
         // On success, navigate to HomePage.
         Navigator.pushReplacement(
@@ -132,6 +144,25 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   }
                   return null;
                 },
+              ),
+              const SizedBox(height: 24),
+
+              // Role Selection Dropdown
+              DropdownButtonFormField<String>(
+                value: _selectedRole,
+                decoration: const InputDecoration(
+                  labelText: "Role",
+                  prefixIcon: Icon(Icons.person),
+                ),
+                onChanged: (value) {
+                  setState(() {
+                    _selectedRole = value!;
+                  });
+                },
+                items:
+                    ["student", "faculty"].map((role) {
+                      return DropdownMenuItem(value: role, child: Text(role));
+                    }).toList(),
               ),
               const SizedBox(height: 24),
 
