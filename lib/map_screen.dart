@@ -7,6 +7,7 @@ import 'package:maps_toolkit/maps_toolkit.dart' as map_tool;
 import "package:geolocator/geolocator.dart";
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -40,6 +41,7 @@ class _MapScreenState extends State<MapScreen> {
   void initState() {
     super.initState();
     initNotifications();
+    restoreLastLocation();
     getCurrentLocation();
   }
 
@@ -79,10 +81,7 @@ class _MapScreenState extends State<MapScreen> {
       DocumentSnapshot userDoc = userQuery.docs.first;
       String role = userDoc['role'] ?? ''; // Fetching role
 
-      print("Fetched role for user with email ${userDoc['email']}: $role");
-
       if (role != 'student') {
-        print("User is not a student, skipping notification.");
         return; // Exit if user is not a student
       }
 
@@ -106,6 +105,20 @@ class _MapScreenState extends State<MapScreen> {
       );
     } catch (e) {
       print("Error fetching user role: $e");
+    }
+  }
+
+  Future<void> restoreLastLocation() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    double? lat = prefs.getDouble('last_lat');
+    double? lng = prefs.getDouble('last_lng');
+    bool? wasInsideGeofence = prefs.getBool('is_in_geofence');
+
+    if (lat != null && lng != null) {
+      setState(() {
+        userLocation = LatLng(lat, lng);
+        isInSelectedArea = wasInsideGeofence ?? false;
+      });
     }
   }
 
@@ -144,6 +157,7 @@ class _MapScreenState extends State<MapScreen> {
       locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
     ).listen((Position position) async {
       LatLng newLocation = LatLng(position.latitude, position.longitude);
+      await saveLastLocation(newLocation);
       checkUpdatedLocation(newLocation);
 
       setState(() {
@@ -155,6 +169,12 @@ class _MapScreenState extends State<MapScreen> {
       final GoogleMapController controller = await _controller.future;
       controller.animateCamera(CameraUpdate.newLatLng(userLocation));
     });
+  }
+
+  Future<void> saveLastLocation(LatLng location) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    prefs.setDouble('last_lat', location.latitude);
+    prefs.setDouble('last_lng', location.longitude);
   }
 
   void updateMarker() {
@@ -182,6 +202,9 @@ class _MapScreenState extends State<MapScreen> {
       false,
     );
 
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    bool wasInsideGeofence = prefs.getBool('is_in_geofence') ?? false;
+    /*
     if (insideGeofence && !isInSelectedArea) {
       // User entered geofence
       showNotification("Geofence Alert", "You have entered the geofence!");
@@ -203,6 +226,26 @@ class _MapScreenState extends State<MapScreen> {
     }
 
     setState(() {});
+  }
+*/
+    if (insideGeofence && !wasInsideGeofence) {
+      showNotification("Geofence Alert", "You have entered the geofence!");
+      entryTime = DateTime.now();
+      isInSelectedArea = true;
+      prefs.setBool('is_in_geofence', true);
+      _storeTimestamp(entryTime!, "entry");
+      await _markAttendanceIfInSession(entryTime!);
+    } else if (!insideGeofence && wasInsideGeofence) {
+      showNotification("Geofence Alert", "You have exited the geofence!");
+      exitTime = DateTime.now();
+      isInSelectedArea = false;
+      prefs.setBool('is_in_geofence', false);
+      _storeTimestamp(exitTime!, "exit");
+      if (entryTime != null) {
+        Duration duration = exitTime!.difference(entryTime!);
+        _storeDuration(entryTime!, exitTime!, duration);
+      }
+    }
   }
 
   String getUserId() {
