@@ -2,7 +2,7 @@
     package="com.example.flutter_attendance_pplication">  <!-- Your actual package name -->
 
     <application
-        android:label="flutter_attendance_pplication"
+        android:label="RedPill BluePill"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

@@ -55,9 +55,73 @@ class MyApp extends StatelessWidget {
           themeMode: themeProvider.themeMode,
           theme: ThemeData.light(),
           darkTheme: ThemeData.dark(),
-          home: LoginPage(),
+          home: AuthChecker(), //LoginPage(),
         );
       },
+    );
+  }
+}
+
+class AuthChecker extends StatefulWidget {
+  @override
+  _AuthCheckerState createState() => _AuthCheckerState();
+}
+
+class _AuthCheckerState extends State<AuthChecker> {
+  @override
+  void initState() {
+    super.initState();
+    _checkAuth();
+  }
+
+  Future<void> _checkAuth() async {
+    User? user = FirebaseAuth.instance.currentUser;
+
+    await Future.delayed(
+      Duration(milliseconds: 500),
+    ); // Prevents instant execution issues
+
+    if (mounted) {
+      if (user != null) {
+        try {
+          DocumentSnapshot userDoc =
+              await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(user.uid)
+                  .get();
+
+          if (userDoc.exists) {
+            String role = userDoc['role'];
+            if (role == 'faculty') {
+              _navigateTo(AdminHomePage());
+            } else {
+              _navigateTo(HomePage());
+            }
+            return;
+          }
+        } catch (e) {
+          print("Error fetching user data: $e");
+        }
+      }
+      _navigateTo(LoginPage()); // If user is null or error occurs
+    }
+  }
+
+  void _navigateTo(Widget page) {
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => page),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: CircularProgressIndicator(),
+      ), // Show loading while checking auth
     );
   }
 }
@@ -165,33 +229,6 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController _passwordController = TextEditingController();
   String _message = "";
 
-  /*
-  Future<void> _signInWithEmail() async {
-    try {
-      await _auth.signInWithEmailAndPassword(
-        email: _userIdController.text,
-        password: _passwordController.text,
-      );
-      setState(() {
-        _message = "Login successful";
-      });
-      // Navigate to HomePage after successful login
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => HomePage()),
-      );
-    } on FirebaseAuthException catch (e) {
-      setState(() {
-        _message =
-            "Firebase Error: ${e.code} - ${e.message}"; // Catches Firebase-specific errors
-      });
-    } catch (e) {
-      setState(() {
-        _message = "Error: $e"; // Catches any other errors
-      });
-    }
-  }
-*/
   final FirebaseService firebaseService =
       FirebaseService(); // Instance of FirebaseService
 
@@ -341,7 +378,6 @@ class _HomePageState extends State<HomePage> {
     HomeScreen(),
     StudentHistoryScreen(),
     ProfileScreen(),
-    SettingsPage(),
   ];
 
   void _onItemTapped(int index) {
@@ -360,10 +396,6 @@ class _HomePageState extends State<HomePage> {
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
           BottomNavigationBarItem(icon: Icon(Icons.history), label: 'History'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
         ],
         currentIndex: _selectedIndex,
         selectedItemColor: Colors.deepPurple,
@@ -395,6 +427,8 @@ class StudentHistoryScreen extends StatefulWidget {
 }
 
 class _StudentHistoryScreenState extends State<StudentHistoryScreen> {
+  String? selectedClassId; // Track selected class filter
+
   @override
   Widget build(BuildContext context) {
     // Get current user
@@ -417,6 +451,11 @@ class _StudentHistoryScreenState extends State<StudentHistoryScreen> {
           }
 
           var sessions = sessionSnapshot.data!.docs;
+          sessions.sort((a, b) {
+            int dateCompare = b['date'].compareTo(a['date']);
+            if (dateCompare != 0) return dateCompare;
+            return b['end_time'].compareTo(a['end_time']);
+          });
 
           Map<String, int> totalSessionsPerClass = {};
           Map<String, int> attendedSessionsPerClass = {};
@@ -447,62 +486,83 @@ class _StudentHistoryScreenState extends State<StudentHistoryScreen> {
                       (attendedSessionsPerClass[classId] ?? 0) + 1;
                 }
               }
+              // **FILTERING SESSIONS BASED ON SELECTED CLASS**
+              var filteredSessions =
+                  selectedClassId == null
+                      ? sessions
+                      : sessions
+                          .where((s) => s['class_id'] == selectedClassId)
+                          .toList();
 
               return SingleChildScrollView(
                 child: Column(
                   children: [
-                    // Large Attendance Summary Card
+                    // **Class Attendance Summary - Clickable Buttons**
                     Padding(
                       padding: const EdgeInsets.all(10.0),
-                      child: Card(
-                        color: const Color.fromARGB(255, 119, 24, 183),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Container(
-                          width: double.infinity,
-                          padding: EdgeInsets.all(20),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children:
-                                totalSessionsPerClass.keys.map((classId) {
-                                  int total = totalSessionsPerClass[classId]!;
-                                  int attended =
-                                      attendedSessionsPerClass[classId] ?? 0;
-                                  double percentage =
-                                      total > 0 ? (attended / total) * 100 : 0;
+                      child: Column(
+                        children:
+                            totalSessionsPerClass.keys.map((classId) {
+                              int total = totalSessionsPerClass[classId]!;
+                              int attended =
+                                  attendedSessionsPerClass[classId] ?? 0;
+                              double percentage =
+                                  total > 0 ? (attended / total) * 100 : 0;
 
-                                  return Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 5,
-                                    ),
+                              bool isSelected = selectedClassId == classId;
+                              Color classCardColor =
+                                  isSelected
+                                      ? Colors
+                                          .blue[700]! // Change color when selected
+                                      : Color.fromARGB(255, 119, 24, 183);
+
+                              return GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    // Toggle between selected and reset state
+                                    selectedClassId =
+                                        isSelected ? null : classId;
+                                  });
+                                },
+                                child: Card(
+                                  color: classCardColor,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Container(
+                                    width: double.infinity,
+                                    padding: EdgeInsets.all(20),
                                     child: Text(
                                       "$classId: ${percentage.toStringAsFixed(2)}% Attendance",
+                                      textAlign: TextAlign.center,
                                       style: TextStyle(
                                         color: Colors.white,
                                         fontWeight: FontWeight.bold,
                                         fontSize: 18,
                                       ),
                                     ),
-                                  );
-                                }).toList(),
-                          ),
-                        ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
                       ),
                     ),
-                    // Sessions Grid
+
+                    // **Sessions Grid (Filtered and Sorted)**
                     GridView.builder(
                       shrinkWrap: true,
                       physics: NeverScrollableScrollPhysics(),
                       padding: EdgeInsets.all(10),
                       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2, // Same as admin's UI
+                        crossAxisCount: 2, // Two columns like before
                         crossAxisSpacing: 10,
                         mainAxisSpacing: 10,
                       ),
-                      itemCount: sessions.length,
+                      itemCount:
+                          filteredSessions
+                              .length, // Updated to show only filtered
                       itemBuilder: (context, index) {
-                        var session = sessions[index];
+                        var session = filteredSessions[index];
                         String sessionId = session.id;
                         String className = session['class_id'];
                         String date = session['date'];
@@ -550,7 +610,11 @@ class _StudentHistoryScreenState extends State<StudentHistoryScreen> {
                                       style: TextStyle(color: Colors.white),
                                     ),
                                     Text(
-                                      "$startTime - $endTime",
+                                      "Start: $startTime",
+                                      style: TextStyle(color: Colors.white70),
+                                    ),
+                                    Text(
+                                      "End: $endTime",
                                       style: TextStyle(color: Colors.white70),
                                     ),
                                     SizedBox(height: 10),
@@ -681,64 +745,44 @@ class ProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final User? user = _auth.currentUser;
-
-    return Scaffold(
-      appBar: AppBar(title: const Text("Student Profile")),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            user?.photoURL != null
-                ? CircleAvatar(
-                  radius: 40,
-                  backgroundImage: NetworkImage(user!.photoURL!),
-                )
-                : const Icon(Icons.person, size: 80),
-            const SizedBox(height: 10),
-            Text(
-              "Email: ${user?.email ?? 'No email found'}",
-              style: TextStyle(fontSize: 18),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () => _changePassword(context),
-              child: const Text("Change Password"),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () => _signOut(context),
-              child: const Text("Sign Out"),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class SettingsPage extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
     var themeProvider = Provider.of<ThemeProvider>(context);
 
     return Scaffold(
-      appBar: AppBar(title: Text("Settings")),
+      appBar: AppBar(title: const Text("Student Profile")),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text("Dark Mode", style: TextStyle(fontSize: 18)),
-                Switch(
-                  value: themeProvider.isDarkMode,
-                  onChanged: (value) {
-                    themeProvider.toggleTheme();
-                  },
-                ),
-              ],
+            Center(
+              child: Column(
+                children: [
+                  user?.photoURL != null
+                      ? CircleAvatar(
+                        radius: 40,
+                        backgroundImage: NetworkImage(user!.photoURL!),
+                      )
+                      : const Icon(Icons.person, size: 80),
+                  const SizedBox(height: 10),
+                  Text(
+                    "Email: ${user?.email ?? 'No email found'}",
+                    style: const TextStyle(fontSize: 18),
+                  ),
+                ],
+              ),
+            ),
+
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.dark_mode),
+              title: const Text("Dark Mode"),
+              trailing: Switch(
+                value: themeProvider.isDarkMode,
+                onChanged: (value) {
+                  themeProvider.toggleTheme();
+                },
+              ),
             ),
           ],
         ),
@@ -760,7 +804,6 @@ class _AdminHomePageState extends State<AdminHomePage> {
     CreateSessionScreen(), // Add the Create Session screen here
     AdminHistoryScreen(),
     AdminProfileScreen(),
-    SettingsPage(),
   ];
 
   void _onItemTapped(int index) {
@@ -780,10 +823,6 @@ class _AdminHomePageState extends State<AdminHomePage> {
           BottomNavigationBarItem(icon: Icon(Icons.build), label: 'Set Up'),
           BottomNavigationBarItem(icon: Icon(Icons.history), label: 'History'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
         ],
         currentIndex: _selectedIndex,
         selectedItemColor: Colors.deepPurple,
@@ -804,10 +843,81 @@ class _AdminHistoryScreenState extends State<AdminHistoryScreen> {
     return Scaffold(
       appBar: AppBar(title: Text("Attendance History")),
       body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance.collection('sessions').snapshots(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return Center(child: CircularProgressIndicator());
+          }
+
+          var sessions = snapshot.data!.docs;
+
+          // Extract unique class IDs
+          Set<String> classIds = {};
+          for (var session in sessions) {
+            classIds.add(session['class_id']);
+          }
+
+          List<String> uniqueClassIds = classIds.toList();
+
+          return ListView.builder(
+            padding: EdgeInsets.all(10),
+            itemCount: uniqueClassIds.length,
+            itemBuilder: (context, index) {
+              String classId = uniqueClassIds[index];
+
+              return GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder:
+                          (context) => ClassSessionsScreen(classId: classId),
+                    ),
+                  );
+                },
+                child: Card(
+                  color: Colors.grey[850],
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Center(
+                      child: Text(
+                        "Class: $classId",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class ClassSessionsScreen extends StatelessWidget {
+  final String classId;
+
+  ClassSessionsScreen({required this.classId});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text("Sessions for $classId")),
+      body: StreamBuilder<QuerySnapshot>(
         stream:
             FirebaseFirestore.instance
                 .collection('sessions')
-                .orderBy('date', descending: true) // Sort by latest date first
+                .where('class_id', isEqualTo: classId)
+                // .orderBy('date', descending: true)
                 .snapshots(),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
@@ -816,18 +926,20 @@ class _AdminHistoryScreenState extends State<AdminHistoryScreen> {
 
           var sessions = snapshot.data!.docs;
 
-          return GridView.builder(
+          //Sort sessions manually using DateTime
+          sessions.sort((a, b) {
+            DateTime dateA = DateTime.parse("${a['date']} ${a['end_time']}");
+            DateTime dateB = DateTime.parse("${b['date']} ${b['end_time']}");
+
+            return dateB.compareTo(dateA); // Sort in descending order
+          });
+
+          return ListView.builder(
             padding: EdgeInsets.all(10),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2, // 2 columns of session icons
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-            ),
             itemCount: sessions.length,
             itemBuilder: (context, index) {
               var session = sessions[index];
               String sessionId = session.id;
-              String classId = session['class_id'];
               String date = session['date'];
               String startTime = session['start_time'];
               String endTime = session['end_time'];
@@ -844,17 +956,17 @@ class _AdminHistoryScreenState extends State<AdminHistoryScreen> {
                   );
                 },
                 child: Card(
-                  color: Colors.grey[850],
+                  color: Colors.blueGrey[900],
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Padding(
-                    padding: EdgeInsets.all(10),
+                    padding: EdgeInsets.all(15),
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          "Class: $classId",
+                          "Date: $date",
                           style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
@@ -862,12 +974,7 @@ class _AdminHistoryScreenState extends State<AdminHistoryScreen> {
                         ),
                         SizedBox(height: 5),
                         Text(
-                          "Date: $date",
-                          style: TextStyle(color: Colors.white),
-                        ),
-                        SizedBox(height: 5),
-                        Text(
-                          "$startTime - $endTime",
+                          "Time: $startTime - $endTime",
                           style: TextStyle(color: Colors.white70),
                         ),
                       ],
@@ -983,33 +1090,42 @@ class AdminProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final User? user = _auth.currentUser;
+    var themeProvider = Provider.of<ThemeProvider>(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Faculty Profile")),
-      body: Center(
+      appBar: AppBar(title: const Text("Student Profile")),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            user?.photoURL != null
-                ? CircleAvatar(
-                  radius: 40,
-                  backgroundImage: NetworkImage(user!.photoURL!),
-                )
-                : const Icon(Icons.person, size: 80),
-            const SizedBox(height: 10),
-            Text(
-              "Email: ${user?.email ?? 'No email found'}",
-              style: TextStyle(fontSize: 18),
+            Center(
+              child: Column(
+                children: [
+                  user?.photoURL != null
+                      ? CircleAvatar(
+                        radius: 40,
+                        backgroundImage: NetworkImage(user!.photoURL!),
+                      )
+                      : const Icon(Icons.person, size: 80),
+                  const SizedBox(height: 10),
+                  Text(
+                    "Email: ${user?.email ?? 'No email found'}",
+                    style: const TextStyle(fontSize: 18),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () => _changePassword(context),
-              child: const Text("Change Password"),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () => _signOut(context),
-              child: const Text("Sign Out"),
+            ListTile(
+              leading: const Icon(Icons.dark_mode),
+              title: const Text("Dark Mode"),
+              trailing: Switch(
+                value: themeProvider.isDarkMode,
+                onChanged: (value) {
+                  themeProvider.toggleTheme();
+                },
+              ),
             ),
           ],
         ),

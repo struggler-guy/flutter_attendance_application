@@ -57,24 +57,56 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Future<void> showNotification(String title, String body) async {
-    const AndroidNotificationDetails androidPlatformChannelSpecifics =
-        AndroidNotificationDetails(
-          'geofence_channel',
-          'Geofence Notifications',
-          importance: Importance.high,
-          priority: Priority.high,
-        );
+    String userId = getUserId();
+    try {
+      // Query Firestore to find the document where email starts with userId
+      QuerySnapshot userQuery =
+          await FirebaseFirestore.instance
+              .collection('users')
+              .where('email', isGreaterThanOrEqualTo: userId)
+              .where(
+                'email',
+                isLessThan: userId + '\uf8ff',
+              ) // Ensures correct filtering
+              .limit(1) // Since email is unique, we only need one result
+              .get();
 
-    const NotificationDetails platformChannelSpecifics = NotificationDetails(
-      android: androidPlatformChannelSpecifics,
-    );
+      if (userQuery.docs.isEmpty) {
+        print("User document not found for user_id: $userId");
+        return;
+      }
 
-    await flutterLocalNotificationsPlugin.show(
-      0,
-      title,
-      body,
-      platformChannelSpecifics,
-    );
+      DocumentSnapshot userDoc = userQuery.docs.first;
+      String role = userDoc['role'] ?? ''; // Fetching role
+
+      print("Fetched role for user with email ${userDoc['email']}: $role");
+
+      if (role != 'student') {
+        print("User is not a student, skipping notification.");
+        return; // Exit if user is not a student
+      }
+
+      const AndroidNotificationDetails androidPlatformChannelSpecifics =
+          AndroidNotificationDetails(
+            'geofence_channel',
+            'Geofence Notifications',
+            importance: Importance.high,
+            priority: Priority.high,
+          );
+
+      const NotificationDetails platformChannelSpecifics = NotificationDetails(
+        android: androidPlatformChannelSpecifics,
+      );
+
+      await flutterLocalNotificationsPlugin.show(
+        0,
+        title,
+        body,
+        platformChannelSpecifics,
+      );
+    } catch (e) {
+      print("Error fetching user role: $e");
+    }
   }
 
   void addCustomIcon() {
