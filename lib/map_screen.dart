@@ -231,14 +231,18 @@ class _MapScreenState extends State<MapScreen> {
     if (insideGeofence && !wasInsideGeofence) {
       showNotification("Geofence Alert", "You have entered the geofence!");
       entryTime = DateTime.now();
-      isInSelectedArea = true;
+      setState(() {
+        isInSelectedArea = true; // Ensure UI updates
+      });
       prefs.setBool('is_in_geofence', true);
       _storeTimestamp(entryTime!, "entry");
       await _markAttendanceIfInSession(entryTime!);
     } else if (!insideGeofence && wasInsideGeofence) {
       showNotification("Geofence Alert", "You have exited the geofence!");
       exitTime = DateTime.now();
-      isInSelectedArea = false;
+      setState(() {
+        isInSelectedArea = false; // Ensure UI updates
+      });
       prefs.setBool('is_in_geofence', false);
       _storeTimestamp(exitTime!, "exit");
       if (entryTime != null) {
