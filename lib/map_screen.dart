@@ -43,6 +43,99 @@ class _MapScreenState extends State<MapScreen> {
     initNotifications();
     restoreLastLocation();
     getCurrentLocation();
+    listenToGeofenceUpdates(); // Listen for geofence changes
+  }
+
+  void listenToGeofenceUpdates() {
+    FirebaseFirestore.instance
+        .collection('geofence')
+        .doc('current')
+        .snapshots()
+        .listen((snapshot) {
+          if (snapshot.exists && snapshot.data() != null) {
+            List<dynamic> coords = snapshot.data()?['coordinates'] ?? [];
+
+            if (coords.isNotEmpty) {
+              List<LatLng> updatedPolygonPoints =
+                  coords
+                      .map((coord) => LatLng(coord['lat'], coord['lng']))
+                      .toList();
+
+              setState(() {
+                polygonPoints = updatedPolygonPoints;
+              });
+            }
+          }
+        });
+  }
+
+  void _showGeofenceDialog(BuildContext context) {
+    List<TextEditingController> controllers = List.generate(
+      4,
+      (index) => TextEditingController(),
+    );
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text("Change Geofence"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: List.generate(4, (index) {
+              return Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: controllers[index],
+                      decoration: InputDecoration(labelText: "Lat,Lng $index"),
+                    ),
+                  ),
+                ],
+              );
+            }),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                try {
+                  List<LatLng> newPolygon =
+                      controllers.map((c) {
+                        var parts = c.text.split(",");
+                        return LatLng(
+                          double.parse(parts[0].trim()),
+                          double.parse(parts[1].trim()),
+                        );
+                      }).toList();
+
+                  FirebaseFirestore.instance
+                      .collection('geofence')
+                      .doc('current')
+                      .set({
+                        'coordinates':
+                            newPolygon
+                                .map(
+                                  (p) => {
+                                    'lat': p.latitude,
+                                    'lng': p.longitude,
+                                  },
+                                )
+                                .toList(),
+                        'timestamp':
+                            FieldValue.serverTimestamp(), // Helps detect updates
+                      });
+
+                  Navigator.pop(context);
+                } catch (e) {
+                  print("Error parsing geofence coordinates: $e");
+                }
+              },
+              child: Text("Update"),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
@@ -372,6 +465,34 @@ class _MapScreenState extends State<MapScreen> {
             ),
           const SizedBox(height: 10),
         ],
+      ),
+      floatingActionButton: FutureBuilder<DocumentSnapshot>(
+        future:
+            FirebaseFirestore.instance
+                .collection('users')
+                .doc(FirebaseAuth.instance.currentUser?.uid)
+                .get(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData || snapshot.data == null) {
+            return SizedBox.shrink();
+          }
+
+          String role = snapshot.data!['role'] ?? '';
+
+          if (role == 'faculty') {
+            return Positioned(
+              top: 20, // Adjust position as needed
+              right: 16,
+              child: FloatingActionButton.extended(
+                onPressed: () => _showGeofenceDialog(context),
+                label: Text("CHANGE"),
+                backgroundColor: Colors.blue, // Change color if needed
+              ),
+            );
+          } else {
+            return SizedBox.shrink(); // Hide for non-admin users
+          }
+        },
       ),
     );
   }
