@@ -372,7 +372,7 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  int _selectedIndex = 0; //default page is HomeScreen
+  int _selectedIndex = 1; //default page is HomeScreen
 
   static final List<Widget> _pages = <Widget>[
     HomeScreen(),
@@ -393,7 +393,7 @@ class _HomePageState extends State<HomePage> {
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed, // Ensures all icons are visible
         items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+          BottomNavigationBarItem(icon: Icon(Icons.map), label: 'Map'),
           BottomNavigationBarItem(icon: Icon(Icons.history), label: 'History'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
         ],
@@ -409,7 +409,7 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("Home")),
+      appBar: AppBar(title: Text("Map")),
       body: Column(
         children: [
           Expanded(
@@ -797,7 +797,7 @@ class AdminHomePage extends StatefulWidget {
 }
 
 class _AdminHomePageState extends State<AdminHomePage> {
-  int _selectedIndex = 0;
+  int _selectedIndex = 1;
 
   static final List<Widget> _pages = <Widget>[
     MapScreen(),
