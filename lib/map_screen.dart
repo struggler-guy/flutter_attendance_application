@@ -427,74 +427,79 @@ class _MapScreenState extends State<MapScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
+      body: Stack(
+        // Use Stack to overlay elements
         children: [
-          Expanded(
-            child: GoogleMap(
-              mapType: MapType.normal,
-              buildingsEnabled: false,
-              initialCameraPosition: CameraPosition(
-                target: userLocation,
-                zoom: 18,
-              ),
-              onMapCreated: (controller) {
-                _controller.complete(controller);
-              },
-              markers: markers,
-              polygons: {
-                Polygon(
-                  polygonId: PolygonId("1"),
-                  points: polygonPoints,
-                  strokeWidth: 2,
-                  strokeColor: Colors.red,
-                  fillColor: const Color.fromARGB(150, 46, 159, 208),
+          Column(
+            children: [
+              Expanded(
+                child: GoogleMap(
+                  mapType: MapType.normal,
+                  buildingsEnabled: false,
+                  initialCameraPosition: CameraPosition(
+                    target: userLocation,
+                    zoom: 18,
+                  ),
+                  onMapCreated: (controller) {
+                    _controller.complete(controller);
+                  },
+                  markers: markers,
+                  polygons: {
+                    Polygon(
+                      polygonId: PolygonId("1"),
+                      points: polygonPoints,
+                      strokeWidth: 2,
+                      strokeColor: Colors.red,
+                      fillColor: const Color.fromARGB(150, 46, 159, 208),
+                    ),
+                  },
                 ),
-              },
-            ),
-          ),
-          AddressInfo(isIntheDeliveryArea: isInSelectedArea),
-          const SizedBox(height: 10),
-          // Displaying Entry and Exit Time
-          if (entryTime != null)
-            Text(
-              "Entry Time: ${entryTime!.toLocal()}",
-              style: TextStyle(color: Colors.red, fontSize: 16),
-            ),
-          if (exitTime != null)
-            Text(
-              "Exit Time: ${exitTime!.toLocal()}",
-              style: TextStyle(color: Colors.red, fontSize: 16),
-            ),
-          const SizedBox(height: 10),
-        ],
-      ),
-      floatingActionButton: FutureBuilder<DocumentSnapshot>(
-        future:
-            FirebaseFirestore.instance
-                .collection('users')
-                .doc(FirebaseAuth.instance.currentUser?.uid)
-                .get(),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData || snapshot.data == null) {
-            return SizedBox.shrink();
-          }
-
-          String role = snapshot.data!['role'] ?? '';
-
-          if (role == 'faculty') {
-            return Positioned(
-              top: 20, // Adjust position as needed
-              right: 16,
-              child: FloatingActionButton.extended(
-                onPressed: () => _showGeofenceDialog(context),
-                label: Text("CHANGE"),
-                backgroundColor: Colors.blue, // Change color if needed
               ),
-            );
-          } else {
-            return SizedBox.shrink(); // Hide for non-admin users
-          }
-        },
+              AddressInfo(isIntheDeliveryArea: isInSelectedArea),
+              const SizedBox(height: 10),
+              // Displaying Entry and Exit Time
+              if (entryTime != null)
+                Text(
+                  "Entry Time: ${entryTime!.toLocal()}",
+                  style: TextStyle(color: Colors.red, fontSize: 16),
+                ),
+              if (exitTime != null)
+                Text(
+                  "Exit Time: ${exitTime!.toLocal()}",
+                  style: TextStyle(color: Colors.red, fontSize: 16),
+                ),
+              const SizedBox(height: 10),
+            ],
+          ),
+          FutureBuilder<DocumentSnapshot>(
+            future:
+                FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(FirebaseAuth.instance.currentUser?.uid)
+                    .get(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData || snapshot.data == null) {
+                return SizedBox.shrink();
+              }
+
+              String role = snapshot.data!['role'] ?? '';
+
+              if (role == 'faculty') {
+                return Positioned(
+                  top: 20, // Adjust position as needed
+                  right: 16,
+                  child: FloatingActionButton.extended(
+                    onPressed: () => _showGeofenceDialog(context),
+                    label: Text("CHANGE"),
+                    backgroundColor: Colors.blue, // Change color if needed
+                  ),
+                );
+              } else {
+                return SizedBox.shrink(); // Hide for non-admin users
+              }
+            },
+          ),
+        ],
       ),
     );
   }
