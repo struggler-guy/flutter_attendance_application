@@ -431,6 +431,8 @@ class _MapScreenState extends State<MapScreen> {
         children: [
           Expanded(
             child: GoogleMap(
+              mapType: MapType.normal,
+              buildingsEnabled: false,
               initialCameraPosition: CameraPosition(
                 target: userLocation,
                 zoom: 18,
