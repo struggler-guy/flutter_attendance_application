@@ -297,30 +297,6 @@ class _MapScreenState extends State<MapScreen> {
 
     SharedPreferences prefs = await SharedPreferences.getInstance();
     bool wasInsideGeofence = prefs.getBool('is_in_geofence') ?? false;
-    /*
-    if (insideGeofence && !isInSelectedArea) {
-      // User entered geofence
-      showNotification("Geofence Alert", "You have entered the geofence!");
-      entryTime = DateTime.now();
-      isInSelectedArea = true;
-      _storeTimestamp(entryTime!, "entry");
-      // Call mark attendance when user enters the geofence
-      await _markAttendanceIfInSession(entryTime!);
-    } else if (!insideGeofence && isInSelectedArea) {
-      // User exited geofence
-      showNotification("Geofence Alert", "You have exited the geofence!");
-      exitTime = DateTime.now();
-      isInSelectedArea = false;
-      _storeTimestamp(exitTime!, "exit");
-      if (entryTime != null) {
-        Duration duration = exitTime!.difference(entryTime!);
-        _storeDuration(entryTime!, exitTime!, duration);
-      }
-    }
-
-    setState(() {});
-  }
-*/
     if (insideGeofence && !wasInsideGeofence) {
       showNotification("Geofence Alert", "You have entered the geofence!");
       entryTime = DateTime.now();
@@ -329,7 +305,7 @@ class _MapScreenState extends State<MapScreen> {
       });
       prefs.setBool('is_in_geofence', true);
       _storeTimestamp(entryTime!, "entry");
-      await _markAttendanceIfInSession(entryTime!);
+      //await _markAttendanceIfInSession(entryTime!);
     } else if (!insideGeofence && wasInsideGeofence) {
       showNotification("Geofence Alert", "You have exited the geofence!");
       exitTime = DateTime.now();
@@ -372,13 +348,15 @@ class _MapScreenState extends State<MapScreen> {
     });
   }
 
-  Future<void> _markAttendanceIfInSession(DateTime entryTime) async {
-    String userId = getUserId();
-
+  // Function to check if the current time is within any active session
+  Future<String?> isTimeWithinSession(DateTime currentTime) async {
     QuerySnapshot sessionSnapshot =
         await FirebaseFirestore.instance
             .collection('sessions')
-            .where('date', isEqualTo: entryTime.toIso8601String().split('T')[0])
+            .where(
+              'date',
+              isEqualTo: currentTime.toIso8601String().split('T')[0],
+            )
             .get();
 
     for (var session in sessionSnapshot.docs) {
@@ -393,34 +371,58 @@ class _MapScreenState extends State<MapScreen> {
       );
 
       DateTime startDateTime = DateTime(
-        entryTime.year,
-        entryTime.month,
-        entryTime.day,
+        currentTime.year,
+        currentTime.month,
+        currentTime.day,
         startTime.hour,
         startTime.minute,
       );
       DateTime endDateTime = DateTime(
-        entryTime.year,
-        entryTime.month,
-        entryTime.day,
+        currentTime.year,
+        currentTime.month,
+        currentTime.day,
         endTime.hour,
         endTime.minute,
       );
 
-      if (entryTime.isAfter(startDateTime) && entryTime.isBefore(endDateTime)) {
-        // Mark attendance in Firestore
+      if (currentTime.isAfter(startDateTime) &&
+          currentTime.isBefore(endDateTime)) {
+        return sessionId; // Current time is within an active session
+      }
+    }
+    return null; // Current time is not within any session
+  }
+
+  Future<void> _markAttendance() async {
+    DateTime currentTime = DateTime.now();
+
+    // Check if the user is inside the geofence and within an active session
+    if (isInSelectedArea) {
+      String? sessionId = await isTimeWithinSession(currentTime);
+      if (sessionId != null) {
+        // Mark attendance if the user is inside the geofence and within session time
+        String userId = getUserId();
         await FirebaseFirestore.instance.collection('attendance').add({
-          'session_id': sessionId,
+          'session_id': sessionId, // Mark as manually attended
           'user_id': userId,
           'status': 'present',
         });
 
         showNotification(
           "Attendance Marked",
-          "You have been marked as present for session $sessionId",
+          "Your attendance has been marked manually.",
         );
-        break; // Exit after marking for one active session
+      } else {
+        showNotification(
+          "Attendance Error",
+          "You can only mark attendance during an active session.",
+        );
       }
+    } else {
+      showNotification(
+        "Geofence Error",
+        "You need to be inside the geofence to mark attendance.",
+      );
     }
   }
 
@@ -491,6 +493,37 @@ class _MapScreenState extends State<MapScreen> {
                   child: FloatingActionButton.extended(
                     onPressed: () => _showGeofenceDialog(context),
                     label: Text("CHANGE"),
+                    backgroundColor: Colors.blue, // Change color if needed
+                  ),
+                );
+              } else {
+                return SizedBox.shrink(); // Hide for non-admin users
+              }
+            },
+          ),
+          FutureBuilder<DocumentSnapshot>(
+            future:
+                FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(FirebaseAuth.instance.currentUser?.uid)
+                    .get(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData || snapshot.data == null) {
+                return SizedBox.shrink();
+              }
+
+              String role = snapshot.data!['role'] ?? '';
+
+              if (role == 'student') {
+                return Positioned(
+                  top: 20, // Adjust position as needed
+                  right: 16,
+                  child: FloatingActionButton.extended(
+                    onPressed: () async {
+                      // Call the _markAttendance function
+                      await _markAttendance();
+                    },
+                    label: Text("MARK"),
                     backgroundColor: Colors.blue, // Change color if needed
                   ),
                 );
